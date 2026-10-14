@@ -24,7 +24,7 @@ Analyze iPhone `panic-full` logs and get a **ranked list of likely faults with e
 ## Installation
 
 ```bash
-git clone https://github.com/<your-username>/panic-analyzer.git
+git clone https://github.com/whoismostafa/panic-analyzer.git
 cd panic-analyzer
 
 python -m venv .venv
