@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iPhone Panic Analyzer</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#1a1d21;--muted:#6b7280;--accent:#2563eb;--border:#e5e7eb;--ok:#15803d;--mid:#b45309;--low:#b91c1c;--code:#f1f3f5}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#181b21;--text:#e8eaed;--muted:#9aa0a8;--accent:#60a5fa;--border:#2a2e36;--ok:#4ade80;--mid:#fbbf24;--low:#f87171;--code:#22262e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,"Segoe UI",Tahoma,sans-serif;line-height:1.6}
+main{max-width:800px;margin:0 auto;padding:18px 14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px}
+h1{font-size:1.35rem;margin:0 0 4px} h2{font-size:1.05rem;margin:0 0 8px}
+.muted{color:var(--muted);font-size:.9rem}
+button,input,textarea,select{font:inherit;color:inherit}
+button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 16px;cursor:pointer}
+button.sec{background:transparent;color:var(--accent);border:1px solid var(--border)}
+button:disabled{opacity:.5}
+input[type=file],textarea,select,input[type=text]{width:100%;margin:8px 0;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px}
+textarea{min-height:80px;direction:ltr;text-align:left;font-family:ui-monospace,monospace;font-size:.85rem}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.chip{display:inline-block;padding:2px 10px;border-radius:99px;font-size:.8rem;border:1px solid currentColor}
+.ok{color:var(--ok)}.mid{color:var(--mid)}.low{color:var(--low)}
+.bar{height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin:6px 0}
+.bar>i{display:block;height:100%;background:var(--accent)}
+.rank{display:flex;gap:10px}.rank>b{font-size:1.3rem;color:var(--muted);min-width:1.4rem}
+pre{direction:ltr;text-align:left;background:var(--code);padding:6px 8px;border-radius:6px;font-size:.78rem;overflow-x:auto;margin:4px 0;white-space:pre-wrap;word-break:break-all}
+ul{margin:4px 0;padding-inline-start:20px}
+dl{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:0}dt{color:var(--muted)}dd{margin:0;direction:ltr;text-align:start;word-break:break-all}
+a{color:var(--accent)}
+.err{color:var(--low)}
+@media print{.noprint{display:none}body{background:#fff;color:#000}.card{break-inside:avoid}}
+</style>
+</head>
+<body>
+<main>
+  <div class="card noprint">
+    <div class="top"><h1 data-i="title"></h1><button class="sec" id="lang">العربية</button></div>
+    <p class="muted" data-i="sub"></p>
+    <input type="file" id="file" accept=".ips,.txt,.log,.json">
+    <textarea id="text" data-ph="paste"></textarea>
+    <div class="row"><button id="go" data-i="analyze"></button><span id="status" class="muted"></span></div>
+  </div>
+  <div id="out"></div>
+  <details class="card noprint"><summary data-i="hist"></summary><div id="hist" class="muted">-</div></details>
+</main>
+<script>
+const T = {
+ en:{title:'iPhone Panic Analyzer',sub:'Upload a panic-full log or paste its text. A log suggests a fault, it never proves it: always verify on the bench.',paste:'Or paste the panic-full text here',analyze:'Analyze',pick:'Choose a file or paste the text',working:'Analyzing (can take up to a minute with web search)...',err:'Error',
+  verdict:'Verdict',conf:'Confidence',High:'High',Medium:'Medium',Low:'Low',agree:'AI verification agrees with the rules',disagree:'AI verification disagrees, review the alternatives',unavailable:'AI verification unavailable',
+  hardware:'Hardware',software:'Software',unknown:'Unknown',device:'Device',model:'Model',ptype:'Panic type',sensors:'Missing sensors',wd:'Watchdog service',kexts:'Kexts',
+  ranked:'Ranked likely faults',cases:(c,n)=>`Your confirmed cases: ${c} of ${n} matched`,ai:'AI verification and sources',alt:'Alternatives',steps:'Next checks',sources:'Sources consulted',quick:'Quick external search',
+  confirm:'Confirm the actual fault (improves future accuracy)',choose:'Select the fault you repaired',other:'Other fault',notes:'Notes (optional)',save:'Save',saved:'Saved',print:'Print / PDF',hist:'History'},
+ ar:{title:'محلل Panic Full للايفون',sub:'ارفع ملف panic-full أو الصق نصه. اللوج يرشّح العطل ولا يؤكده، فتحقق دائماً على الجهاز.',paste:'أو الصق نص panic-full هنا',analyze:'تحليل',pick:'اختر ملفاً أو الصق النص',working:'جارٍ التحليل (قد يستغرق دقيقة مع البحث)...',err:'خطأ',
+  verdict:'الخلاصة',conf:'الثقة',High:'عالية',Medium:'متوسطة',Low:'منخفضة',agree:'الذكاء الاصطناعي يؤكد النتيجة',disagree:'الذكاء الاصطناعي يختلف، راجع الاحتمالات',unavailable:'التحقق بالذكاء الاصطناعي غير متاح',
+  hardware:'هاردوير',software:'سوفتوير',unknown:'غير محدد',device:'الجهاز',model:'الموديل',ptype:'نوع البانيك',sensors:'حساسات مفقودة',wd:'خدمة Watchdog',kexts:'Kexts',
+  ranked:'الأعطال المحتملة مرتبة',cases:(c,n)=>`حالاتك المؤكدة: ${c} من ${n} صحيحة`,ai:'تحقق الذكاء الاصطناعي والمصادر',alt:'احتمالات أخرى',steps:'خطوات الفحص',sources:'مصادر تم الاطلاع عليها',quick:'بحث خارجي سريع',
+  confirm:'تأكيد العطل الفعلي (يحسّن الدقة مستقبلاً)',choose:'اختر العطل الذي تم إصلاحه',other:'عطل آخر',notes:'ملاحظات (اختياري)',save:'حفظ',saved:'تم الحفظ',print:'طباعة / PDF',hist:'السجل السابق'}
+};
+let lang = (navigator.language || '').startsWith('ar') ? 'ar' : 'en', last = null, SIGS = [];
+const $ = id => document.getElementById(id), t = k => T[lang][k];
+const el = (tag, x, c) => { const e = document.createElement(tag); if (x != null) e.textContent = x; if (c) e.className = c; return e; };
+const LC = {High:'ok', Medium:'mid', Low:'low'};
+const card = title => { const c = el('div', null, 'card'); if (title) c.append(el('h2', title)); $('out').append(c); return c; };
+const ul = items => { const u = el('ul'); items.forEach(i => u.append(el('li', i))); return u; };
+const bar = v => { const b = el('div', null, 'bar'), i = el('i'); i.style.width = Math.round(v*100) + '%'; b.append(i); return b; };
+const link = (url, text) => { const a = el('a', text); if (/^https?:\/\//i.test(url)) { a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer'; } return a; };
+
+function applyLang() {
+  document.documentElement.lang = lang; document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+  document.querySelectorAll('[data-i]').forEach(n => n.textContent = t(n.dataset.i));
+  document.querySelectorAll('[data-ph]').forEach(n => n.placeholder = t(n.dataset.ph));
+  $('lang').textContent = lang === 'ar' ? 'English' : 'العربية';
+  if (last) render(last);
+}
+
+function render(d) {
+  last = d; $('out').replaceChildren();
+  const v = card(t('verdict')), head = el('div', null, 'row');
+  head.append(el('strong', d.verdict.fault), el('span', t('conf') + ': ' + t(d.verdict.confidence), 'chip ' + LC[d.verdict.confidence]), el('span', t(d.verdict.area), 'chip'));
+  v.append(head, el('p', t(d.verdict.agreement), 'muted'));
+  const dl = el('dl'), s = d.signals;
+  [[t('device'), d.device.name], [t('model'), d.device.model], ['iOS', d.device.ios], [t('ptype'), s.panic_type],
+   [t('sensors'), s.missing_sensors_list.join(', ')],
+   [t('wd'), s.watchdog_service ? `${s.watchdog_service} (${s.watchdog_seconds}s)` : ''],
+   [t('kexts'), s.kexts.join(', ')]].forEach(([k, x]) => { if (x) dl.append(el('dt', k), el('dd', x)); });
+  v.append(dl);
+
+  const r = card(t('ranked'));
+  d.ranked.forEach(c => {
+    const box = el('div', null, 'rank'), body = el('div'), row = el('div', null, 'row');
+    row.append(el('strong', c.title), el('span', c.share + '%', 'chip'), el('span', t(c.area), 'chip'));
+    body.append(row, bar(c.score)); box.append(el('b', c.rank), body);
+    c.evidence.forEach(e => body.append(el('pre', e)));
+    if (c.history) body.append(el('p', t('cases')(c.history.correct, c.history.cases), 'muted'));
+    body.append(ul(c.steps)); r.append(box, el('hr'));
+  });
+
+  const a = card(t('ai'));
+  if (!d.ai.available) a.append(el('p', d.ai.error || t('unavailable'), 'muted'));
+  else {
+    a.append(el('strong', d.ai.likely_cause), bar(d.ai.confidence || 0));
+    const sm = lang === 'ar' ? (d.ai.summary_ar || d.ai.summary) : (d.ai.summary || d.ai.summary_ar);
+    if (sm) a.append(el('p', sm));
+    if (d.ai.alternatives?.length) a.append(el('b', t('alt')), ul(d.ai.alternatives));
+    if (d.ai.next_steps?.length) a.append(el('b', t('steps')), ul(d.ai.next_steps));
+    if (d.ai.sources?.length) { a.append(el('b', t('sources'))); const u = el('ul'); d.ai.sources.forEach(x => { const li = el('li'); li.append(link(x.url, x.title)); u.append(li); }); a.append(u); }
+  }
+  const l = card(t('quick')), lr = el('div', null, 'row'); d.links.forEach(x => lr.append(link(x.url, x.label))); l.append(lr);
+
+  const c = card(t('confirm')); c.classList.add('noprint');
+  const sel = el('select'); sel.append(new Option(t('choose'), ''));
+  SIGS.forEach(x => sel.append(new Option(x.title, x.id))); sel.append(new Option(t('other'), 'other'));
+  const notes = el('input'); notes.type = 'text'; notes.placeholder = t('notes');
+  const btn = el('button', t('save')), msg = el('span', null, 'muted');
+  btn.onclick = async () => {
+    if (!sel.value) return;
+    await fetch('/api/cases/' + d.case_id + '/confirm', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({signature_id: sel.value, notes: notes.value})});
+    msg.textContent = t('saved'); loadHistory();
+  };
+  c.append(sel, notes, btn, msg);
+  const p = el('button', t('print'), 'sec noprint'); p.onclick = () => window.print(); $('out').append(p);
+}
+
+async function loadHistory() {
+  const rows = await (await fetch('/api/history')).json(), h = $('hist'); h.replaceChildren();
+  if (!rows.length) { h.textContent = '-'; return; }
+  rows.forEach(r => h.append(el('div', `${r.created} | ${r.device} | ${r.top_title}${r.confirmed_id ? ' | ✔ ' + r.confirmed_id : ''}`)));
+}
+
+$('lang').onclick = () => { lang = lang === 'ar' ? 'en' : 'ar'; applyLang(); };
+$('go').onclick = async () => {
+  const f = $('file').files[0], tx = $('text').value.trim();
+  if (!f && !tx) { $('status').textContent = t('pick'); return; }
+  $('go').disabled = true; $('status').textContent = t('working'); $('status').className = 'muted';
+  try {
+    const fd = new FormData(); f ? fd.append('file', f) : fd.append('text', tx);
+    const res = await fetch('/api/analyze', {method:'POST', body: fd});
+    if (!res.ok) throw new Error((await res.json()).detail || t('err'));
+    render(await res.json()); $('status').textContent = ''; loadHistory();
+  } catch (e) { $('status').textContent = e.message; $('status').className = 'err'; }
+  $('go').disabled = false;
+};
+fetch('/api/signatures').then(r => r.json()).then(x => SIGS = x); applyLang(); loadHistory();
+</script>
+</body>
+</html>
